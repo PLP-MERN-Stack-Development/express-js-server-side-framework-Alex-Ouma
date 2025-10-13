@@ -60,3 +60,69 @@ Your work will be automatically submitted when you push to your GitHub Classroom
 - [Express.js Documentation](https://expressjs.com/)
 - [RESTful API Design Best Practices](https://restfulapi.net/)
 - [HTTP Status Codes](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status) 
+
+# Product API Server 🛍️
+
+A simple Express server for managing products with features like CRUD operations, filtering, pagination, custom middleware, and global error handling.
+
+## 🚀 How to Run the Server
+
+### Prerequisites
+
+You need **Node.js** and **npm** (or yarn/pnpm) installed on your system.
+
+### Setup Steps
+
+1.  **Clone the repository** (if applicable):
+    ```bash
+    git clone <your-repository-url>
+    cd <your-project-directory>
+    ```
+
+2.  **Install dependencies**:
+    This project uses `express`, `body-parser`, and `uuid`.
+    ```bash
+    npm install express body-parser uuid
+    ```
+
+3.  **Set Environment Variables**:
+    Create a file named **`.env`** in the root directory and copy the contents of **`.env.example`** into it. Configure the variables as needed.
+
+    *Example `.env`:*
+    ```
+    PORT=3000
+    API_KEY=your-secret-api-key
+    ```
+
+4.  **Start the server**:
+    ```bash
+    node server.js
+    ```
+    The server will start on the port specified in `.env` file (e.g., `http://localhost:3000`).
+
+---
+
+## 💻 API Endpoints Documentation
+
+The base URL for the API is `http://localhost:<PORT>/api`. All requests to authenticated endpoints **must** include the header `X-API-KEY: your-secret-api-key`.
+
+| Method | Endpoint | Description | Authentication | Body/Query Params |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/` | Welcomes message. | No | None |
+| `GET` | `/api/products` | Get all products with optional **filtering** and **pagination**. | Yes | **Query**: `category`, `page`, `limit` |
+| `GET` | `/api/products/search` | Search products by **name**. | Yes | **Query**: `q` (search term) |
+| `GET` | `/api/products/:id` | Get a specific product by its **ID**. | Yes | **Params**: `:id` |
+| `POST` | `/api/products` | Create a new product. | Yes | **Body**: Product object |
+| `PUT` | `/api/products/:id` | Update an existing product by its **ID**. | Yes | **Params**: `:id`. **Body**: Product object (full update) |
+| `DELETE` | `/api/products/:id` | Delete a product by its **ID**. | Yes | **Params**: `:id` |
+| `GET` | `/api/products/stats` | Get product count grouped by **category**. | Yes | None |
+
+---
+
+## 📝 Examples of Requests and Responses
+
+The examples below use the API Key `your-secret-api-key`.
+
+### 1. Create a Product (`POST /api/products`)
+
+**Request:**

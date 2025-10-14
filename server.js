@@ -4,6 +4,9 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const { v4: uuidv4 } = require('uuid');
+const connectDB = require('./config/db');
+connectDB();
+require('dotenv').config();
 
 // Initialize Express app
 const app = express();

@@ -7,6 +7,8 @@ const { v4: uuidv4 } = require('uuid');
 const connectDB = require('./config/db');
 connectDB();
 require('dotenv').config();
+const mongoose = require('mongoose');
+const Product = require('./models/product');
 
 // Initialize Express app
 const app = express();
@@ -66,7 +68,10 @@ const loggerMiddleware = (req, res, next) => {
 
 // Authentication Middleware
 const authMiddleware = (req, res, next) => {
-  const apiKey = req.headers['x-api-key'];
+  // Accept API key in header or query for convenience
+  const apiKeyHeader = req.headers['x-api-key'];
+  const apiKeyQuery = req.query['x-api-key'];
+  const apiKey = apiKeyHeader || apiKeyQuery;
   if (!apiKey || apiKey !== '12345') {
     return next(new ValidationError('Invalid or missing API key'));
   }
@@ -150,30 +155,68 @@ app.get('/api/products/:id', authMiddleware, (req, res, next) => {
 });
 
 // Create a new product
-app.post('/api/products', authMiddleware, validateProduct, (req, res, next) => {
+app.post('/api/products', authMiddleware, validateProduct, async (req, res, next) => {
   try {
-    const product = {
+    const productData = {
       id: uuidv4(),
       ...req.body,
       createdAt: new Date()
     };
-    products.push(product);
-    res.status(201).json(product);
+
+    const newProduct = new Product(productData);
+    const savedProduct = await newProduct.save(); // <-- saves to MongoDB
+
+    res.status(201).json(savedProduct);
   } catch (error) {
+    console.error('Error saving product:', error);
     next(error);
   }
 });
 
 // Update a product
-app.put('/api/products/:id', authMiddleware, validateProduct, (req, res, next) => {
+app.put('/api/products/:id', authMiddleware, validateProduct, async (req, res, next) => {
   try {
-    const index = products.findIndex(p => p.id === req.params.id);
-    if (index === -1) {
+    const productId = req.params.id;
+
+    // Try to update by the custom `id` field first (this is what the model uses).
+    let updated = await Product.findOneAndUpdate(
+      { id: productId },
+      { $set: req.body },
+      { new: true, runValidators: true }
+    );
+
+    // If not found and the provided id looks like a Mongo ObjectId, try updating by _id
+    if (!updated && mongoose.Types.ObjectId.isValid(productId)) {
+      updated = await Product.findByIdAndUpdate(
+        productId,
+        { $set: req.body },
+        { new: true, runValidators: true }
+      );
+    }
+
+    if (!updated) {
       throw new NotFoundError('Product not found');
     }
-    products[index] = { ...products[index], ...req.body };
-    res.json(products[index]);
+
+    // Normalize returned document to an object and ensure an `id` exists for in-memory syncing
+    const updatedObj = updated.toObject ? updated.toObject() : { ...updated };
+    if (!updatedObj.id) {
+      // If the document doesn't have the custom `id` field (maybe it was created directly in Compass),
+      // use the MongoDB _id as a fallback string.
+      updatedObj.id = updatedObj._id ? updatedObj._id.toString() : productId;
+    }
+
+    // Keep the in-memory products array in sync
+    const index = products.findIndex(p => p.id === updatedObj.id);
+    if (index !== -1) {
+      products[index] = { ...products[index], ...req.body };
+    } else {
+      products.push({ id: updatedObj.id, name: updatedObj.name, description: updatedObj.description, price: updatedObj.price, category: updatedObj.category, inStock: updatedObj.inStock });
+    }
+
+    res.json(updated);
   } catch (error) {
+    console.error('Error updating product:', error);
     next(error);
   }
 });

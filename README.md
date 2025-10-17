@@ -90,7 +90,7 @@ You need **Node.js** and **npm** (or yarn/pnpm) installed on your system.
 
     *Example `.env`:*
     ```
-    PORT=3000
+    PORT=5000
     API_KEY=your-secret-api-key
     ```
 

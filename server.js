@@ -97,57 +97,61 @@ app.get('/', (req, res) => {
 });
 
 // RESTful Routes
-// Get all products with filtering and pagination
-app.get('/api/products', authMiddleware, (req, res, next) => {
+// Get all products with filtering and pagination (reads from MongoDB)
+app.get('/api/products', authMiddleware, async (req, res, next) => {
   try {
-    let filteredProducts = [...products];
-    
-    // Category filter
-    if (req.query.category) {
-      filteredProducts = filteredProducts.filter(p => p.category.toLowerCase() === req.query.category.toLowerCase());
-    }
-    
-    // Pagination
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const startIndex = (page - 1) * limit;
-    const endIndex = page * limit;
-    
-    const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
-    
+
+    const filter = {};
+    if (req.query.category) {
+      filter.category = { $regex: `^${req.query.category}$`, $options: 'i' };
+    }
+
+    const total = await Product.countDocuments(filter);
+    const productsFromDb = await Product.find(filter).skip(startIndex).limit(limit).exec();
+
     res.json({
-      total: filteredProducts.length,
+      total,
       page,
       limit,
-      products: paginatedProducts
+      products: productsFromDb
     });
   } catch (error) {
     next(error);
   }
 });
 
-// Search products by name
-app.get('/api/products/search', authMiddleware, (req, res, next) => {
+// Search products by name (reads from MongoDB)
+app.get('/api/products/search', authMiddleware, async (req, res, next) => {
   try {
-    const query = req.query.q?.toLowerCase();
+    const query = req.query.q;
     if (!query) {
       return next(new ValidationError('Search query is required'));
     }
-    
-    const results = products.filter(p => p.name.toLowerCase().includes(query));
+
+    const results = await Product.find({ name: { $regex: query, $options: 'i' } }).exec();
     res.json(results);
   } catch (error) {
     next(error);
   }
 });
 
-// Get a specific product
-app.get('/api/products/:id', authMiddleware, (req, res, next) => {
+// Get a specific product (reads from MongoDB)
+app.get('/api/products/:id', authMiddleware, async (req, res, next) => {
   try {
-    const product = products.find(p => p.id === req.params.id);
+    const id = req.params.id;
+
+    let product = await Product.findOne({ id }).exec();
+    if (!product && mongoose.Types.ObjectId.isValid(id)) {
+      product = await Product.findById(id).exec();
+    }
+
     if (!product) {
       throw new NotFoundError('Product not found');
     }
+
     res.json(product);
   } catch (error) {
     next(error);
@@ -222,30 +226,37 @@ app.put('/api/products/:id', authMiddleware, validateProduct, async (req, res, n
 });
 
 // Delete a product
-app.delete('/api/products/:id', authMiddleware, (req, res, next) => {
+app.delete('/api/products/:id', authMiddleware, async (req, res, next) => {
   try {
-    const index = products.findIndex(p => p.id === req.params.id);
-    if (index === -1) {
-      throw new NotFoundError('Product not found');
+    const deletedProduct = await Product.findByIdAndDelete(req.params.id);
+
+    if (!deletedProduct) {
+      return res.status(404).json({ error: 'NotFoundError', message: 'Product not found' });
     }
-    products = products.filter(p => p.id !== req.params.id);
+
     res.status(204).send();
   } catch (error) {
+    console.error('Error deleting product:', error);
     next(error);
   }
 });
 
-// Product statistics
-app.get('/api/products/stats', authMiddleware, (req, res, next) => {
+// Product statistics (reads from MongoDB)
+app.get('/api/products/stats', authMiddleware, async (req, res, next) => {
   try {
-    const stats = products.reduce((acc, product) => {
-      acc[product.category] = (acc[product.category] || 0) + 1;
+    const totalProducts = await Product.countDocuments();
+    const categoriesAgg = await Product.aggregate([
+      { $group: { _id: '$category', count: { $sum: 1 } } }
+    ]).exec();
+
+    const categories = categoriesAgg.reduce((acc, cur) => {
+      acc[cur._id] = cur.count;
       return acc;
     }, {});
-    
+
     res.json({
-      totalProducts: products.length,
-      categories: stats
+      totalProducts,
+      categories
     });
   } catch (error) {
     next(error);
